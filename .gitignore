@@ -1,0 +1,10 @@
+test-out/
+node_modules/
+.pi-verify/
+*.tgz
+.env
+.env.*
+cursor-session.json
+**/cursor-session.json
+*.log
+.DS_Store

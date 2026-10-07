@@ -1,0 +1,43 @@
+{
+  "name": "pi-grokbot-import",
+  "version": "1.2.0",
+  "description": "Import a Grok Bot bundle or share/marketplace link into Pi (full recipe with Cursor login; metadata-only without).",
+  "type": "module",
+  "keywords": [
+    "pi-package",
+    "grok-bot",
+    "import"
+  ],
+  "license": "MIT",
+  "pi": {
+    "extensions": [
+      "./src/extension.ts"
+    ]
+  },
+  "bin": {
+    "grokbot-export": "./export-grokbot.mjs",
+    "grokbot-import": "./scripts/import-cli.mjs"
+  },
+  "scripts": {
+    "export-side": "node ./export-grokbot.mjs 4cb4dc74-7f67-401f-ab93-79e189db8626 --out ./examples/side.grokbot.json",
+    "import-side": "node ./scripts/import-cli.mjs ./examples/side.grokbot.json --out ./test-out/side",
+    "dry-run": "node ./scripts/dry-run.mjs",
+    "test": "node ./scripts/dry-run.mjs && node ./scripts/import-cli.mjs ./examples/side.grokbot.json --out ./test-out/side --force"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-tui": "*"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "files": [
+    "src",
+    "scripts",
+    "examples",
+    "export-grokbot.mjs",
+    "README.md",
+    "fixtures"
+  ]
+}
