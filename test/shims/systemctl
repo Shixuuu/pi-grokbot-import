@@ -1,0 +1,15 @@
+#!/bin/sh
+# Fake `systemctl --user` for sandbox tests: logs calls, tracks enabled timers in $SANDBOX_SYSTEMD_STATE.
+s="${SANDBOX_SYSTEMD_STATE:?SANDBOX_SYSTEMD_STATE not set}"
+echo "systemctl $*" >> "$s.log"
+[ "$1" = "--user" ] || { echo "only --user supported" >&2; exit 2; }
+shift
+touch "$s"
+case "$1" in
+  show-environment) echo "HOME=$HOME" ;;
+  daemon-reload) ;;
+  enable) shift; [ "$1" = "--now" ] && shift; for u in "$@"; do grep -qx "$u" "$s" || echo "$u" >> "$s"; done ;;
+  disable) shift; [ "$1" = "--now" ] && shift; for u in "$@"; do grep -vx "$u" "$s" > "$s.tmp"; mv "$s.tmp" "$s"; done ;;
+  list-timers) cat "$s" ;;
+  *) echo "fake systemctl: unsupported $*" >&2; exit 2 ;;
+esac

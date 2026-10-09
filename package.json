@@ -1,12 +1,14 @@
 {
   "name": "pi-grokbot-import",
-  "version": "1.2.0",
-  "description": "Import a Grok Bot bundle or share/marketplace link into Pi (full recipe with Cursor login; metadata-only without).",
+  "version": "2.0.0",
+  "description": "Search and install Grok Bot templates (official, built-in, community, trading) into Pi from a GitHub catalog repo: skills, prompts, persona, memory, MCP stubs, and cron/systemd schedules. Also imports share links and bundles.",
   "type": "module",
   "keywords": [
     "pi-package",
     "grok-bot",
-    "import"
+    "import",
+    "templates",
+    "cron"
   ],
   "license": "MIT",
   "pi": {
@@ -15,6 +17,7 @@
     ]
   },
   "bin": {
+    "grokbot": "./scripts/grokbot.mjs",
     "grokbot-export": "./export-grokbot.mjs",
     "grokbot-import": "./scripts/import-cli.mjs"
   },
@@ -22,7 +25,9 @@
     "export-side": "node ./export-grokbot.mjs 4cb4dc74-7f67-401f-ab93-79e189db8626 --out ./examples/side.grokbot.json",
     "import-side": "node ./scripts/import-cli.mjs ./examples/side.grokbot.json --out ./test-out/side",
     "dry-run": "node ./scripts/dry-run.mjs",
-    "test": "node ./scripts/dry-run.mjs && node ./scripts/import-cli.mjs ./examples/side.grokbot.json --out ./test-out/side --force"
+    "test": "node ./scripts/dry-run.mjs && node ./scripts/import-cli.mjs ./examples/side.grokbot.json --out ./test-out/side --force",
+    "test:unit": "node ./test/unit.mjs",
+    "test:e2e": "bash ./test/e2e-sandbox.sh"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*",
@@ -38,6 +43,19 @@
     "examples",
     "export-grokbot.mjs",
     "README.md",
-    "fixtures"
-  ]
+    "fixtures",
+    "docs",
+    "test"
+  ],
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    },
+    "@earendil-works/pi-ai": {
+      "optional": true
+    },
+    "@earendil-works/pi-tui": {
+      "optional": true
+    }
+  }
 }

@@ -1,14 +1,149 @@
 # pi-grokbot-import
 
-One-command import of a **Grok Bot** into **Pi** (`@earendil-works/pi-coding-agent`).
+Search and install **Grok Bot templates** into **Pi** (`@earendil-works/pi-coding-agent`), from your terminal or by
+just asking Pi ("find me a trading bot and install it").
 
-Builds a portable `grokbot-bundle/v1` from:
+Templates come from a GitHub **catalog repo** (default: the private `Shixuuu/grokbot-pi-templates`, which holds the
+official marketplace bots, the in-app built-in starters, the community bots, and a trading-investing section). Each
+install sets up:
 
-1. **Full recipe** — Cursor account session → `GetGrokBotTemplateImportDetails` + recipe blob (skills, routines, memory, plugins)
-2. **Metadata-only** — public `GetPublicGrokBotTemplate` / share HTML when not logged in
-3. **Local export** — `export-grokbot.mjs` on a box that already Added the bot
+| Piece | What happens |
+| --- | --- |
+| Skills + prompt templates | the template folder is registered with `pi install` (global) or `pi install -l` (project) |
+| Persona + memory seeds | `AGENTS.md` + `MEMORY.md` go into a marked block in `APPEND_SYSTEM.md` (removed on uninstall) |
+| Connectors | **disabled** stub entries in Pi's `mcp.json` with a note on what to configure (no secrets) |
+| Routines | real user **crontab** lines or **systemd `--user` timers** (`--no-schedule` to skip) |
+| Routines without a schedule | listed so you can set one: `grokbot schedule <bot> <routine> "<cron>"` |
 
-**Version:** 1.2.0
+Share links / marketplace URLs that are not in the catalog still work: they are fetched live (full recipe with a
+Cursor login, metadata only without), and the legacy `/import-grokbot` folder import is unchanged.
+
+**Version:** 2.0.0 · Node **≥ 22.19** · Pi **≥ 1.0**
+
+## Quickstart
+
+```bash
+# 1. Pi + this extension (tools and /slash commands inside Pi)
+npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+pi install git:github.com/Shixuuu/pi-grokbot-import
+
+# 2. The `grokbot` CLI (optional; everything also works from inside Pi)
+npm install -g github:Shixuuu/pi-grokbot-import
+
+# 3. Log in. GitHub = read access to the catalog repo. Reuses `gh auth login` / GH_TOKEN if present,
+#    otherwise opens the browser via `gh auth login --web`. Cursor is optional (live fetch of non-catalog links).
+grokbot login            # GitHub, then offers the Cursor browser login
+grokbot status
+
+# 4. Search (no downloads besides the cached catalog index)
+grokbot search trading
+grokbot search --tag crypto
+grokbot search --section official
+grokbot search inbox --section builtin
+grokbot search --creator @lennysan
+grokbot info overheard
+
+# 5. Install (shows the plan, asks before writing anything)
+grokbot install overheard                       # global: available in every Pi session
+grokbot install frank --scope project           # only in the current project (.pi/)
+grokbot install dentrade --dry-run              # preview only
+grokbot install coin --no-schedule              # skip cron/systemd
+grokbot install https://x.ai/bot/<shareId>      # not in the catalog: live fetch
+
+# 6. Manage
+grokbot list-installed
+grokbot schedule overheard daily-mention-monitor "0 9 * * 1-5"
+grokbot uninstall overheard                     # removes schedules, pi package, persona block, MCP stubs, files
+```
+
+Then talk to the bot: `pi` (global install) or `cd <project> && pi` (project install). Routines are prompt templates,
+so `/daily-mention-monitor` runs one by hand.
+
+### Talking to Pi
+
+The extension registers tools (`grokbot_search`, `grokbot_info`, `grokbot_install`, `grokbot_uninstall`,
+`grokbot_list`), so plain requests work:
+
+```text
+find me a trading bot for options and install it
+what official Grok Bots are there for recruiting?
+install overheard but don't schedule anything
+which bots do I have installed? remove dentrade
+```
+
+Installs and uninstalls from chat are **two-step**. Pi first shows the plan (files, persona, MCP stubs, and every
+cron/systemd entry). In the interactive TUI you get a confirmation dialog. In print/RPC mode the tool returns a
+one-time `confirmToken`, and applying needs that token **plus** a new user message after the preview, so the model
+cannot approve its own plan in the same turn.
+
+Slash commands (interactive TUI): `/grokbot-search <query> [--tag t] [--section s]`, `/grokbot-info <id>`,
+`/grokbot-install <id> [--scope project] [--no-schedule]`, `/grokbot-uninstall <bot>`, `/grokbot-list`,
+`/grokbot-status`, `/grokbot-login`.
+
+## Logins
+
+**GitHub (catalog access).** Lookup order: `GH_TOKEN` / `GITHUB_TOKEN` → `gh auth token` (an existing
+`gh auth login`) → a token saved by this tool (`~/.pi/agent/grokbot-import/github-token.json`, mode 0600).
+`grokbot login github` runs `gh auth login --web` when the GitHub CLI is installed and no login exists.
+Fallback: `grokbot login github --token` (reads a fine-grained token with *Contents: read* on the catalog repo from
+a hidden prompt or stdin; never printed).
+
+*GitHub device flow (optional).* This package ships **no OAuth client id** of its own and does not borrow another
+app's. To get a browser device-code login without the `gh` CLI, create your own GitHub OAuth App
+(Settings → Developer settings → OAuth Apps → New; any homepage/callback URL; tick **Enable Device Flow**), then:
+
+```bash
+grokbot config set github-client-id <your-client-id>   # or export GROKBOT_GITHUB_CLIENT_ID=...
+grokbot login github --device                            # shows a code for github.com/login/device
+```
+
+It requests the `repo` scope (needed to read a private repo with an OAuth App token).
+
+**Cursor (optional).** Only for fetching share links that are not in the catalog. Browser PKCE login by default
+(`grokbot login cursor` or `/grokbot-cursor-login`); token paste is the fallback (`grokbot login cursor --token` or
+`/grokbot-cursor-login-token`). Details below.
+
+## Configuration
+
+| Setting | How |
+| --- | --- |
+| Catalog repo | `--repo owner/name[@ref]` · `GROKBOT_CATALOG_REPO` · `grokbot config set catalog-repo owner/name` · default `Shixuuu/grokbot-pi-templates@main` |
+| Catalog cache | `~/.pi/agent/grokbot-import/catalog-cache/` (24 h; `--refresh` re-downloads, ETag-aware) |
+| Pi agent dir | `PI_CODING_AGENT_DIR` (default `~/.pi/agent`) |
+| Scheduler | `--scheduler auto|cron|systemd` (auto: systemd `--user` on Linux when available, else crontab) |
+| `pi` binary used by schedules | first `pi` on `PATH`, or `GROKBOT_PI_BIN` |
+| Test overrides | `GROKBOT_CRONTAB_BIN`, `GROKBOT_SYSTEMCTL_BIN`, `GROKBOT_GH_BIN` |
+
+A catalog repo needs a `catalog.json` at its root (`{templates:[{shareId, slug, name, description, category,
+official, builtin, tags, creator, creatorHandle, status, fidelity, skills, routines, path, ...}]}`) and one Pi
+package folder per template at `path`.
+
+## Where things go
+
+| | global (default) | `--scope project` |
+| --- | --- | --- |
+| bot files | `~/.pi/agent/grokbot/bots/<slug>/` | `<project>/.pi/grokbot/<slug>/` |
+| package entry | `~/.pi/agent/settings.json` | `<project>/.pi/settings.json` |
+| persona block | `~/.pi/agent/APPEND_SYSTEM.md` | `<project>/.pi/APPEND_SYSTEM.md` |
+| MCP stubs | `~/.pi/agent/mcp.json` | `<project>/.pi/mcp.json` |
+| schedules | crontab / `~/.config/systemd/user/grokbot-<bot>-<routine>.{service,timer}` | same |
+| logs | `~/.pi/agent/grokbot-import/logs/<bot>/<routine>.log` | same |
+| install ledger | `~/.pi/agent/grokbot-import/installed.json` | same |
+
+Notes:
+
+- Scheduled runs execute `pi -p --approve "/<routine>"` **inside the bot folder**, so each run gets that bot's own
+  persona, skills and memory, whatever else is installed. Cron lines end in `# grokbot-import:<bot>:<routine>`, and
+  uninstall removes only those lines.
+- Times in templates are the creator's local time; cron and systemd use the host's timezone.
+- Pi uses only one `APPEND_SYSTEM.md`, and a project file replaces the global one. A second *global* install therefore
+  skips the persona by default (pass `--persona` to stack them). `cd ~/.pi/agent/grokbot/bots/<slug> && pi` always
+  gives a single bot's persona.
+- MCP stubs are `enabled: false` with `command: "configure-me"` and a `_grokbot.note`. Replace the command/url, add
+  credentials via `${ENV}` references, then enable. Stubs shared by several bots are removed with the last one, and
+  a stub you edited is kept.
+- systemd `OnCalendar` is converted from the cron expression. When a cron cannot be expressed (day-of-month **and**
+  day-of-week both set, wrap-around ranges), that routine is listed as unscheduled; use `--scheduler cron` for it.
 
 ## What Pi actually supports (cited)
 
@@ -24,24 +159,9 @@ Sources: [Pi coding-agent README](https://github.com/earendil-works/pi/blob/main
 | MCP | `mcp.json`, `pi mcp add`, `pi.registerMcpServer()` | **Pi does support MCP** |
 | Packages | `package.json` → `"pi": { "extensions": […] }` | |
 
-Pi has **no built-in cron / routines engine**. Schedules become prompt templates plus optional `cron/` / `systemd/` sketches.
+Pi has **no built-in cron / routines engine**. `grokbot install` writes real user crontab lines or systemd `--user` timers for routines that carry a schedule; `/import-grokbot` (legacy) only writes `cron/` / `systemd/` sketches.
 
-## Install
-
-Needs Node **≥ 22.19** and Pi:
-
-```bash
-npm install -g --ignore-scripts @earendil-works/pi-coding-agent
-```
-
-```bash
-# from this directory (or after unzipping pi-grokbot-import.zip)
-pi install ./pi-grokbot-import
-# one-shot:
-pi -e /path/to/pi-grokbot-import
-```
-
-## Cursor login (for full share/marketplace import)
+## Cursor login (live fetch of share links not in the catalog)
 
 Grok Bot templates on `api2.cursor.sh` require a **Cursor session** for the full recipe. This is **not** xAI OAuth.
 
@@ -77,7 +197,7 @@ Fallback: paste an access JWT, `WorkosCursorSessionToken` value, or Dashboard **
 
 Set `NO_OPEN_BROWSER=1` to always print the URL without spawning a browser.
 
-## Usage
+## Legacy import (share links and bundles into a folder)
 
 ### Import a share / marketplace link
 
@@ -192,13 +312,21 @@ Recipe blob fields mapped from ImportDetails: `profile`, `memory`, `skills[{name
 pi-grokbot-import/
   package.json
   export-grokbot.mjs
-  src/extension.ts          # /import-grokbot + Cursor login commands
+  scripts/grokbot.mjs       # CLI: login/search/info/install/schedule/list-installed/uninstall/config
+  src/extension.ts          # Pi tools + slash commands (catalog and legacy import, Cursor login)
+  src/chat-tools.mjs        # tool logic + preview/confirm flow
+  src/paths.mjs             # agent dir, config, catalog repo selection
+  src/github-auth.mjs       # gh / GH_TOKEN / saved token / device flow (your own client id)
+  src/catalog.mjs           # catalog.json fetch + cache, search, per-template download
+  src/installer.mjs         # install plan/apply, persona, MCP stubs, ledger, uninstall
+  src/scheduler.mjs         # crontab + systemd --user timers with markers
   src/cursor-auth.mjs       # PKCE login, session store, ConnectRPC helpers
   src/fetch-template.mjs    # share URL → bundle (full or metadata)
   src/import-bundle.mjs
   src/schema.mjs
   scripts/import-cli.mjs
   scripts/dry-run.mjs
+  test/                     # unit.mjs, e2e-sandbox.sh, mock-llm.mjs, verify-load.mjs, shims/
   fixtures/
   examples/
   README.md
@@ -207,12 +335,16 @@ pi-grokbot-import/
 ## Tests
 
 ```bash
-npm test
-# or
-node scripts/dry-run.mjs
+npm test             # legacy import dry run (offline + public endpoints)
+npm run test:unit    # catalog search/resolve, cron parsing + OnCalendar, crontab add/remove (offline, sandboxed)
+npm run test:e2e     # full sandbox: fresh HOME, gh auth reuse, search, installs, Pi load check, chat tools, uninstall
 ```
 
-Coverage:
+`test/e2e-sandbox.sh` never touches the real crontab or systemd: `GROKBOT_CRONTAB_BIN` / `GROKBOT_SYSTEMCTL_BIN` point at
+`test/shims/` which write into the sandbox. It drives the Pi tools through a scripted OpenAI-compatible mock model
+(`test/mock-llm.mjs`), so no model account is needed.
+
+Legacy `dry-run.mjs` coverage:
 
 - Local Side export/import + rich fixture + schema reject
 - URL normalize (share / deep link / marketplace / grokbottemplates)
