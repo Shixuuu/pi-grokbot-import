@@ -8,3 +8,7 @@ cursor-session.json
 **/cursor-session.json
 *.log
 .DS_Store
+github-token.json
+installed.json
+catalog-cache/
+pending-confirmations.json

@@ -108,14 +108,17 @@ function buildNotesMarkdown(bundle) {
 
 function buildSkillMd(skill) {
   const name = toSkillSlug(skill.name);
-  const desc = (skill.description || skill.name).slice(0, 1024).replace(/\n/g, " ");
-  return `---\nname: ${name}\ndescription: ${desc}\n---\n\n${skill.body.trim()}\n`;
+  const desc = (skill.description || skill.name).slice(0, 1024).replace(/\s+/g, " ").trim();
+  // Recipe skill bodies often carry their own frontmatter; drop it so the file has exactly one block.
+  const body = String(skill.body || "").replace(/^\uFEFF?---\r?\n[\s\S]*?\r?\n---\r?\n?/, "").trim();
+  // JSON strings are valid YAML double-quoted scalars, so colons/quotes in descriptions stay safe.
+  return `---\nname: ${name}\ndescription: ${JSON.stringify(desc)}\n---\n\n${body}\n`;
 }
 
 function buildPromptTemplate(routine) {
   const parts = [
     "---",
-    `description: Imported Grok Bot routine: ${routine.name}`,
+    `description: ${JSON.stringify(`Imported Grok Bot routine: ${routine.name}`)}`,
     'argument-hint: "[extra context]"',
     "---",
     "",

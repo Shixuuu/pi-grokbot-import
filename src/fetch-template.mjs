@@ -641,6 +641,7 @@ export function mapFullRecipeToBundle(data, { id, url, sharerName, importSource 
         ? { id: p }
         : {
             id: p.pluginId || p.id || p.name,
+            name: p.name || undefined,
             note: p.note || p.description || undefined,
           },
     ),
