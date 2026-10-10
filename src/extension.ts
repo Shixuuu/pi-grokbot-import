@@ -1,7 +1,7 @@
 /**
  * Pi extension: Grok Bot import + Cursor login for full recipe downloads.
  *
- * Catalog (private GitHub repo, default Shixuuu/grokbot-pi-templates):
+ * Catalog (GitHub repo, default: the public Shixuuu/grokbot-pi-templates; no login needed):
  * - tools: grokbot_search, grokbot_info, grokbot_install, grokbot_uninstall, grokbot_list
  * - commands: /grokbot-search, /grokbot-info, /grokbot-install, /grokbot-uninstall, /grokbot-list,
  *             /grokbot-status, /grokbot-login
@@ -516,7 +516,7 @@ export default function (pi: ExtensionAPI) {
         pi,
         ctx,
         [
-          "GitHub login needed for the private template catalog. Pick one:",
+          "GitHub login is optional (the default catalog is public). It is needed for a private catalog repo and raises the API rate limit. Pick one:",
           "",
           "- In a terminal: `gh auth login --web` (or `grokbot login github`), then run /grokbot-status",
           "- In Pi: `!gh auth login --web`",

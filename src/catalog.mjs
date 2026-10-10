@@ -1,6 +1,12 @@
 /**
- * Template catalog (catalog.json in the catalog repo) via the GitHub REST API:
- * fetch + cache, search, resolve, and per-template download (only that folder).
+ * Template catalog (catalog.json in the catalog repo): fetch + cache, search, resolve,
+ * and per-template download (only that folder).
+ *
+ * The default catalog is public, so no GitHub login is needed: without a token, catalog.json and
+ * template files come from raw.githubusercontent.com (no API rate limit) and the folder listing
+ * costs one unauthenticated API call (or, if that is rate limited, the catalog site's manifest).
+ * With a token (GH_TOKEN, `gh auth login`, or `grokbot login github`) the REST API is used, which
+ * also works for a private fork.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -25,10 +31,30 @@ async function gh(url, { token, accept = "application/vnd.github+json", etag } =
   return { res };
 }
 
-function authHint(repo, status) {
-  if (status === 404 || status === 401 || status === 403)
-    return `Cannot read ${repo} (HTTP ${status}). The catalog repo is private: log in with \`grokbot login github\` (reuses \`gh auth login\`), or set GH_TOKEN to a token that can read it.`;
+const DEFAULT_SITE = { "Shixuuu/grokbot-pi-templates": "https://shixuuu.github.io/grokbot-pi-templates/" };
+
+function authHint(repo, status, hadToken) {
+  if (status === 404 || status === 401)
+    return hadToken
+      ? `Cannot read ${repo} (HTTP ${status}): check the repo name and that your GitHub token can read it.`
+      : `Cannot read ${repo} (HTTP ${status}) without a login. If this catalog repo is private, log in with \`grokbot login github\` (reuses \`gh auth login\`) or set GH_TOKEN to a token that can read it.`;
+  if (status === 403 || status === 429)
+    return `GitHub refused the request for ${repo} (HTTP ${status}, likely the unauthenticated rate limit). Retry later, or log in with \`grokbot login github\` / set GH_TOKEN for a higher limit.`;
   return null;
+}
+
+async function raw(repo, ref, filePath, { etag } = {}) {
+  const url = `https://raw.githubusercontent.com/${repo}/${encodeURIComponent(ref).replace(/%2F/g, "/")}/${filePath.split("/").map(encodeURIComponent).join("/")}`;
+  const headers = { "User-Agent": UA };
+  if (etag) headers["If-None-Match"] = etag;
+  const res = await fetch(url, { headers });
+  if (res.status === 304) return { notModified: true };
+  if (!res.ok) {
+    const err = new Error(`HTTP ${res.status} for ${url}`);
+    err.status = res.status;
+    throw err;
+  }
+  return { res };
 }
 
 async function tokenOrNull() {
@@ -55,11 +81,10 @@ export async function loadCatalog({ refresh = false, repo: repoOverride, offline
   if (cached && (offline || (fresh && !refresh))) return { repo, ref, fetchedAt: cached.fetchedAt, fromCache: true, templates: cached.catalog.templates };
   const token = await tokenOrNull();
   try {
-    const r = await gh(`https://api.github.com/repos/${repo}/contents/catalog.json?ref=${encodeURIComponent(ref)}`, {
-      token,
-      accept: "application/vnd.github.raw",
-      etag: refresh ? undefined : cached?.etag,
-    });
+    const etag = refresh ? undefined : cached?.etag;
+    const r = token
+      ? await gh(`https://api.github.com/repos/${repo}/contents/catalog.json?ref=${encodeURIComponent(ref)}`, { token, accept: "application/vnd.github.raw", etag })
+      : await raw(repo, ref, "catalog.json", { etag });
     if (r.notModified) {
       cached.fetchedAt = new Date().toISOString();
       writeJson(file, cached);
@@ -72,7 +97,7 @@ export async function loadCatalog({ refresh = false, repo: repoOverride, offline
     return { repo, ref, fetchedAt: entry.fetchedAt, fromCache: false, templates: catalog.templates };
   } catch (e) {
     if (cached) return { repo, ref, fetchedAt: cached.fetchedAt, fromCache: true, stale: true, error: e.message, templates: cached.catalog.templates };
-    const hint = authHint(repo, e.status);
+    const hint = authHint(repo, e.status, !!token);
     throw hint ? Object.assign(new Error(hint), { status: e.status }) : e;
   }
 }
@@ -175,23 +200,36 @@ export function resolveTemplate(templates, idOrSlug) {
   return live[0];
 }
 
+/** File list for one template folder: git trees API, or the catalog site's manifest when the API is unavailable. */
+async function listTemplateFiles(repo, ref, entry, token) {
+  const treeUrl = `https://api.github.com/repos/${repo}/git/trees/${encodeURIComponent(`${ref}:${entry.path}`)}?recursive=1`;
+  try {
+    const tree = await (await gh(treeUrl, { token })).res.json();
+    if (tree.truncated) throw new Error(`Template tree for ${entry.path} is truncated by GitHub; refusing partial download`);
+    return (tree.tree || []).filter((x) => x.type === "blob").map((x) => ({ path: x.path, sha: x.sha }));
+  } catch (e) {
+    const site = process.env.GROKBOT_CATALOG_SITE || DEFAULT_SITE[repo];
+    if (!token && site && (e.status === 403 || e.status === 429)) {
+      const url = `${site.replace(/\/?$/, "/")}m/${entry.path.replace(/^templates\//, "").replace(/\//g, "__")}.json`;
+      const res = await fetch(url, { headers: { "User-Agent": UA } });
+      if (res.ok) {
+        const m = await res.json();
+        if (Array.isArray(m.files)) return m.files.map((f) => ({ path: typeof f === "string" ? f : f.p }));
+      }
+    }
+    const hint = authHint(repo, e.status, !!token);
+    throw hint ? new Error(hint) : e;
+  }
+}
+
 /**
- * Download one template folder (and nothing else) using the git trees API for
- * `<ref>:<path>` plus one blob request per file. No clone, no full tarball.
+ * Download one template folder (and nothing else). No clone, no full tarball.
+ * With a token: git trees API + one blob request per file. Without: one tree call, files from raw.githubusercontent.com.
  */
 export async function downloadTemplate(entry, destDir, { repo: repoOverride, onFile } = {}) {
   const { repo, ref } = catalogRepo(repoOverride);
   const token = await tokenOrNull();
-  const treeUrl = `https://api.github.com/repos/${repo}/git/trees/${encodeURIComponent(`${ref}:${entry.path}`)}?recursive=1`;
-  let tree;
-  try {
-    tree = await (await gh(treeUrl, { token })).res.json();
-  } catch (e) {
-    const hint = authHint(repo, e.status);
-    throw hint ? new Error(hint) : e;
-  }
-  if (tree.truncated) throw new Error(`Template tree for ${entry.path} is truncated by GitHub; refusing partial download`);
-  const files = (tree.tree || []).filter((x) => x.type === "blob");
+  const files = await listTemplateFiles(repo, ref, entry, token);
   fs.mkdirSync(destDir, { recursive: true });
   const queue = files.slice();
   const workers = Array.from({ length: Math.min(6, queue.length) }, async () => {
@@ -199,7 +237,10 @@ export async function downloadTemplate(entry, destDir, { repo: repoOverride, onF
       const f = queue.shift();
       const rel = path.normalize(f.path);
       if (rel.startsWith("..") || path.isAbsolute(rel)) throw new Error(`Unsafe path in tree: ${f.path}`);
-      const r = await gh(`https://api.github.com/repos/${repo}/git/blobs/${f.sha}`, { token, accept: "application/vnd.github.raw" });
+      const r =
+        token && f.sha
+          ? await gh(`https://api.github.com/repos/${repo}/git/blobs/${f.sha}`, { token, accept: "application/vnd.github.raw" })
+          : await raw(repo, ref, `${entry.path}/${f.path}`);
       const buf = Buffer.from(await r.res.arrayBuffer());
       const out = path.join(destDir, rel);
       fs.mkdirSync(path.dirname(out), { recursive: true });

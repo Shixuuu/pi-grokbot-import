@@ -14,7 +14,7 @@ import { planInstall, formatPlan, applyInstall, discardPlan, listInstalled, unin
 const HELP = `grokbot — Grok Bot templates for Pi
 
 Usage:
-  grokbot login [github|cursor] [--token] [--device]   Web login (default); --token reads a pasted token from stdin
+  grokbot login [github|cursor] [--token] [--device]   Optional (catalog is public). Web login; --token reads stdin
   grokbot logout [github|cursor]
   grokbot status
   grokbot search [query] [--section official|builtin|community] [--category c] [--tag t]
@@ -129,7 +129,7 @@ async function cmdStatus() {
   const c = getSessionStatus();
   const { repo, ref } = catalogRepo();
   out(`Catalog repo: ${repo}@${ref}`);
-  out(`GitHub:  ${g.loggedIn ? `logged in as ${g.login} (via ${g.source})` : g.invalid ? `token from ${g.source} was rejected` : "not logged in (run: grokbot login github)"}`);
+  out(`GitHub:  ${g.loggedIn ? `logged in as ${g.login} (via ${g.source})` : g.invalid ? `token from ${g.source} was rejected` : "not logged in (optional: the default catalog is public; log in for a private catalog or a higher API limit)"}`);
   out(`Cursor:  ${c.loggedIn ? `${c.expired ? "expired" : "logged in"} (${c.emailRedacted || c.authMethod}), expires ${c.expiresAt}` : "not logged in (optional; run: grokbot login cursor)"}`);
   out(`Installed bots: ${listInstalled().length}`);
 }

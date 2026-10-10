@@ -3,9 +3,11 @@
 Search and install **Grok Bot templates** into **Pi** (`@earendil-works/pi-coding-agent`), from your terminal or by
 just asking Pi ("find me a trading bot and install it").
 
-Templates come from a GitHub **catalog repo** (default: the private `Shixuuu/grokbot-pi-templates`, which holds the
-official marketplace bots, the in-app built-in starters, the community bots, and a trading-investing section). Each
-install sets up:
+Templates come from a GitHub **catalog repo** (default: [`Shixuuu/grokbot-pi-templates`](https://github.com/Shixuuu/grokbot-pi-templates),
+which holds the official marketplace bots, the in-app built-in starters, the community bots, and a trading-investing
+section). **The catalog is now public**: browse it at <https://shixuuu.github.io/grokbot-pi-templates/> (search,
+filters, one-click zip per bot with Pi and Hermes setup steps), and install from it **without any GitHub login**.
+Each install sets up:
 
 | Piece | What happens |
 | --- | --- |
@@ -18,7 +20,7 @@ install sets up:
 Share links / marketplace URLs that are not in the catalog still work: they are fetched live (full recipe with a
 Cursor login, metadata only without), and the legacy `/import-grokbot` folder import is unchanged.
 
-**Version:** 2.0.0 · Node **≥ 22.19** · Pi **≥ 1.0**
+**Version:** 2.0.1 · Node **≥ 22.19** · Pi **≥ 1.0**
 
 ## Quickstart
 
@@ -30,10 +32,10 @@ pi install git:github.com/Shixuuu/pi-grokbot-import
 # 2. The `grokbot` CLI (optional; everything also works from inside Pi)
 npm install -g github:Shixuuu/pi-grokbot-import
 
-# 3. Log in. GitHub = read access to the catalog repo. Reuses `gh auth login` / GH_TOKEN if present,
-#    otherwise opens the browser via `gh auth login --web`. Cursor is optional (live fetch of non-catalog links).
-grokbot login            # GitHub, then offers the Cursor browser login
+# 3. (Optional) log in. Not needed for the public catalog. GitHub only matters for a private catalog fork or
+#    a higher API rate limit; Cursor only for live fetches of share links that are not in the catalog.
 grokbot status
+# grokbot login          # GitHub (reuses gh auth login / GH_TOKEN), then offers the Cursor browser login
 
 # 4. Search (no downloads besides the cached catalog index)
 grokbot search trading
@@ -82,7 +84,10 @@ Slash commands (interactive TUI): `/grokbot-search <query> [--tag t] [--section 
 
 ## Logins
 
-**GitHub (catalog access).** Lookup order: `GH_TOKEN` / `GITHUB_TOKEN` → `gh auth token` (an existing
+**GitHub (optional).** The default catalog is public: without a token, `catalog.json` and template files are read
+from `raw.githubusercontent.com` (no API rate limit), and each install makes one unauthenticated API call to list the
+folder (falling back to the catalog site's file manifest if that call is rate limited). A token is used when present,
+and is required only for a private catalog repo (`--repo` / `GROKBOT_CATALOG_REPO`). Lookup order: `GH_TOKEN` / `GITHUB_TOKEN` → `gh auth token` (an existing
 `gh auth login`) → a token saved by this tool (`~/.pi/agent/grokbot-import/github-token.json`, mode 0600).
 `grokbot login github` runs `gh auth login --web` when the GitHub CLI is installed and no login exists.
 Fallback: `grokbot login github --token` (reads a fine-grained token with *Contents: read* on the catalog repo from
@@ -338,6 +343,7 @@ pi-grokbot-import/
 npm test             # legacy import dry run (offline + public endpoints)
 npm run test:unit    # catalog search/resolve, cron parsing + OnCalendar, crontab add/remove (offline, sandboxed)
 npm run test:e2e     # full sandbox: fresh HOME, gh auth reuse, search, installs, Pi load check, chat tools, uninstall
+GROKBOT_E2E_NO_AUTH=1 npm run test:e2e   # same, with no GitHub credentials (public catalog)
 ```
 
 `test/e2e-sandbox.sh` never touches the real crontab or systemd: `GROKBOT_CRONTAB_BIN` / `GROKBOT_SYSTEMCTL_BIN` point at

@@ -2,8 +2,9 @@
 # End-to-end test in a throwaway HOME. Nothing touches the real crontab or systemd:
 # crontab/systemctl are replaced by shims (test/shims) that write into the sandbox.
 #
-# Needs: pi (>= 1.0) and node >= 22.19 on PATH, network access to GitHub, and read access
-# to the catalog repo through an existing `gh auth login` (GH_CONFIG_DIR, default ~/.config/gh) or GH_TOKEN.
+# Needs: pi (>= 1.0) and node >= 22.19 on PATH and network access to GitHub. By default it reuses an existing
+# `gh auth login` (GH_CONFIG_DIR, default ~/.config/gh) or GH_TOKEN. With GROKBOT_E2E_NO_AUTH=1 it runs with no
+# GitHub credentials at all (public catalog via raw.githubusercontent.com).
 set -euo pipefail
 REPO_DIR=$(cd "$(dirname "$0")/.." && pwd)
 REAL_GH_CONFIG=${GH_CONFIG_DIR:-$HOME/.config/gh}
@@ -11,7 +12,11 @@ SANDBOX=$(mktemp -d /tmp/grokbot-e2e-XXXX)
 export HOME=$SANDBOX/home
 mkdir -p "$HOME/.pi/agent" "$SANDBOX/proj"
 unset PI_CODING_AGENT_DIR
-export GH_CONFIG_DIR=$REAL_GH_CONFIG
+if [ "${GROKBOT_E2E_NO_AUTH:-0}" = 1 ]; then
+  mkdir -p "$SANDBOX/empty-gh"; export GH_CONFIG_DIR=$SANDBOX/empty-gh; unset GH_TOKEN GITHUB_TOKEN
+else
+  export GH_CONFIG_DIR=$REAL_GH_CONFIG
+fi
 export GROKBOT_CRONTAB_BIN=$REPO_DIR/test/shims/crontab GROKBOT_SYSTEMCTL_BIN=$REPO_DIR/test/shims/systemctl
 export SANDBOX_CRONTAB_FILE=$SANDBOX/crontab.txt SANDBOX_SYSTEMD_STATE=$SANDBOX/systemd-enabled.txt
 G="node $REPO_DIR/scripts/grokbot.mjs"
@@ -47,9 +52,15 @@ echo "== install the extension into Pi (local path, like pi install git:...)"
 node -e 'const s=require(process.argv[1]);s.defaultProvider="mock";s.defaultModel="mock";require("fs").writeFileSync(process.argv[1],JSON.stringify(s,null,2))' "$HOME/.pi/agent/settings.json"
 check "extension registered in settings" grep -q pi-grokbot-import "$HOME/.pi/agent/settings.json"
 
-echo "== login (reuses gh auth)"
-$G login github </dev/null | tee "$SANDBOX/login.txt"
-check "github login via existing gh auth" grep -q "logged in as" "$SANDBOX/login.txt"
+if [ "${GROKBOT_E2E_NO_AUTH:-0}" = 1 ]; then
+  echo "== no GitHub login (public catalog)"
+  $G status </dev/null | tee "$SANDBOX/login.txt"
+  check "status: GitHub login reported as optional" grep -q "not logged in (optional" "$SANDBOX/login.txt"
+else
+  echo "== login (reuses gh auth)"
+  $G login github </dev/null | tee "$SANDBOX/login.txt"
+  check "github login via existing gh auth" grep -q "logged in as" "$SANDBOX/login.txt"
+fi
 
 echo "== search"
 $G search trading --limit 5 | tee "$SANDBOX/search.txt"

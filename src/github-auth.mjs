@@ -1,5 +1,6 @@
 /**
- * GitHub access for the (private) template catalog repo.
+ * Optional GitHub access for the template catalog repo (the default catalog is public; a token is only
+ * needed for a private catalog fork or a higher API rate limit).
  *
  * Token lookup order (first hit wins):
  *   1. GH_TOKEN / GITHUB_TOKEN env vars

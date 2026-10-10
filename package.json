@@ -1,6 +1,6 @@
 {
   "name": "pi-grokbot-import",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Search and install Grok Bot templates (official, built-in, community, trading) into Pi from a GitHub catalog repo: skills, prompts, persona, memory, MCP stubs, and cron/systemd schedules. Also imports share links and bundles.",
   "type": "module",
   "keywords": [

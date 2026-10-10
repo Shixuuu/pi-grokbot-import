@@ -178,7 +178,7 @@ export async function statusText() {
   const { repo, ref } = catalogRepo();
   return [
     `Catalog: ${repo}@${ref}`,
-    `GitHub: ${g.loggedIn ? `logged in as ${g.login} (via ${g.source})` : "not logged in — run `gh auth login --web` (or `grokbot login github`) in a terminal, or set GH_TOKEN"}`,
+    `GitHub: ${g.loggedIn ? `logged in as ${g.login} (via ${g.source})` : "not logged in (optional: the default catalog is public; for a private catalog run `gh auth login --web` or `grokbot login github`, or set GH_TOKEN)"}`,
     `Cursor: ${c.loggedIn ? `${c.expired ? "expired" : "logged in"}, expires ${c.expiresAt}` : "not logged in (optional; /grokbot-cursor-login)"}`,
     `Installed: ${listInstalled().map((b) => b.botId).join(", ") || "none"}`,
   ].join("\n");
